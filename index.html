@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Apartment Checklist</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #FAF7F2; font-family: Georgia, serif; }
+  ::-webkit-scrollbar { display: none; }
+  textarea { -webkit-appearance: none; }
+  textarea:focus { outline: none; border-color: #C8A96E !important; }
+  input:focus { outline: none; }
+  .pill-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 16px 20px 4px; scrollbar-width: none; }
+  .pill-scroll::-webkit-scrollbar { display: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const SECTIONS = [
+  {
+    id: "ops", label: "Lease & Operations", emoji: "📋", subtitle: "Ask before signing",
+    items: [
+      { id: "pay_rent",    type: "ask", label: "How to Pay Rent",          prompt: "Portal, check, Zelle? Due date? Grace period?" },
+      { id: "rent_hike",   type: "ask", label: "Rent Increase Policy",     prompt: "How much can it go up? When? Rent-stabilized?" },
+      { id: "renewal",     type: "ask", label: "Lease Renewal Process",    prompt: "How far in advance? Month-to-month option?" },
+      { id: "maintenance", type: "ask", label: "Maintenance Procedure",    prompt: "How do you submit a request? Response time?" },
+      { id: "super",       type: "ask", label: "Super / Property Manager", prompt: "Name, phone, email, hours?" },
+      { id: "subletting",  type: "ask", label: "Subletting / Airbnb",      prompt: "Allowed? Any approval process?" },
+      { id: "pets",        type: "ask", label: "Pet Policy",               prompt: "Allowed? Deposit? Breed/weight restrictions?" },
+      { id: "guests",      type: "ask", label: "Guest Policy",             prompt: "Any limits on long-term guests?" },
+      { id: "utilities",   type: "ask", label: "Utilities Included",       prompt: "Heat, hot water, electric, internet — what's in rent?" },
+      { id: "moveinout",   type: "ask", label: "Move-in / Move-out",       prompt: "Elevator booking, damage inspection, deposit return timeline?" },
+    ],
+  },
+  {
+    id: "financial", label: "Financial", emoji: "💰", subtitle: "Know your numbers",
+    items: [
+      { id: "brokers_fee",    type: "ask", label: "Broker's Fee",       prompt: "No-fee or what %?" },
+      { id: "rent_structure", type: "ask", label: "Gross vs. Net Rent", prompt: "What do you actually pay monthly?" },
+      { id: "income_req",     type: "ask", label: "Income Requirement", prompt: "40x rule? Need a guarantor?" },
+      { id: "lease_type",     type: "ask", label: "Lease Type",         prompt: "Rent-stabilized or market-rate?" },
+    ],
+  },
+  {
+    id: "unit", label: "The Unit", emoji: "🏠", subtitle: "Check in person",
+    items: [
+      { id: "sqft",      type: "check", label: "Square Footage",     prompt: "Enough room for your furniture?" },
+      { id: "light",     type: "check", label: "Natural Light",      prompt: "Window direction — street (noisy/bright) vs rear (quiet/dark)" },
+      { id: "floor",     type: "check", label: "Floor / Elevation",  prompt: "What floor? Views? Noise level?" },
+      { id: "bathroom",  type: "check", label: "Bathroom",           prompt: "En-suite or shared/public access?" },
+      { id: "flooring",  type: "check", label: "Flooring Condition", prompt: "Creaky, scuffed, or freshly renovated?" },
+      { id: "furnished", type: "check", label: "Furnished?",         prompt: "What's included or not?" },
+      { id: "closets",   type: "check", label: "Storage & Closets",  prompt: "Enough closet space? Any in-unit storage?" },
+    ],
+  },
+  {
+    id: "tech", label: "Tech & Utilities", emoji: "🔌", subtitle: "Test everything",
+    items: [
+      { id: "heating",        type: "check", label: "Heating Control", prompt: "Your thermostat or building steam heat?" },
+      { id: "cell",           type: "check", label: "Cell Signal",     prompt: "Check signal in every room" },
+      { id: "outlets",        type: "check", label: "Wall Outlets",    prompt: "Count them, check locations, are they 3-prong?" },
+      { id: "ceiling_lights", type: "check", label: "Ceiling Lights",  prompt: "Built-in or need floor lamps?" },
+      { id: "internet",       type: "check", label: "Internet / ISP",  prompt: "Fios or Spectrum wired? Ethernet ports?" },
+    ],
+  },
+  {
+    id: "plumbing", label: "Plumbing & Appliances", emoji: "🚿", subtitle: "Run the water",
+    items: [
+      { id: "water",      type: "check", label: "Water Pressure & Heat", prompt: "Turn on shower and sinks — check pressure and hot water speed" },
+      { id: "exhaust",    type: "check", label: "Kitchen Exhaust",       prompt: "Does the fan vent outside or just recirculate?" },
+      { id: "pests",      type: "check", label: "Pest Check",            prompt: "Look under sinks for moisture, traps, or droppings" },
+      { id: "appliances", type: "check", label: "Appliances",            prompt: "Dishwasher, washer/dryer in-unit? Condition?" },
+    ],
+  },
+  {
+    id: "building", label: "Building & Security", emoji: "🏢", subtitle: "Know your setup",
+    items: [
+      { id: "access",      type: "check", label: "Building Access",     prompt: "Physical keys, key card, or app?" },
+      { id: "security",    type: "check", label: "Security",            prompt: "Cameras, doorman, package room, locked gate?" },
+      { id: "elevator",    type: "check", label: "Stairs vs. Elevator", prompt: "Walk-up? Elevator reliable?" },
+      { id: "amenities",   type: "check", label: "Amenities",           prompt: "Gym, roof, pool, common spaces?" },
+      { id: "trash",       type: "check", label: "Trash Management",    prompt: "Secure bins or piled on the sidewalk?" },
+      { id: "laundry",     type: "check", label: "Laundry",             prompt: "In-building or distance to laundromat?" },
+      { id: "quiet_hours", type: "ask",   label: "Quiet Hours",         prompt: "Official quiet hours? Noise complaint process?" },
+    ],
+  },
+  {
+    id: "neighborhood", label: "Neighborhood", emoji: "🗺️", subtitle: "Look around",
+    items: [
+      { id: "ground_floor",    type: "check", label: "Ground Floor Neighbors", prompt: "Above a bar, deli, or noisy business?" },
+      { id: "transit",         type: "check", label: "Transit Lines",           prompt: "Express or local stop?" },
+      { id: "commute",         type: "check", label: "Commute Walk",            prompt: "Walking distance to station — time it" },
+      { id: "weekend_transit", type: "check", label: "Weekend Service",         prompt: "Chronic weekend changes on this line?" },
+      { id: "grocery",         type: "check", label: "Grocery / Essentials",    prompt: "Nearest grocery store? Pharmacy? Bodega?" },
+    ],
+  },
+];
+
+const STORAGE_KEY = "apt-checklist-v1";
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : { state: {}, aptName: "" };
+  } catch { return { state: {}, aptName: "" }; }
+}
+
+function persist(data) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function wrapText(doc, text, x, y, maxWidth, lineHeight) {
+  const lines = doc.splitTextToSize(text, maxWidth);
+  doc.text(lines, x, y);
+  return y + lines.length * lineHeight;
+}
+
+function generatePDF(aptName, state) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "pt", format: "letter" });
+  const margin = 48;
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const contentW = pageW - margin * 2;
+  let y = margin;
+
+  function checkPage(needed) {
+    if (y + needed > pageH - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  // Header block
+  doc.setFillColor(26, 26, 26);
+  doc.rect(0, 0, pageW, 80, "F");
+  doc.setTextColor(200, 169, 110);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text("APARTMENT CHECKLIST", margin, 30);
+  doc.setTextColor(250, 247, 242);
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.text(aptName || "Untitled Apartment", margin, 56);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(150, 150, 150);
+  const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  doc.text(dateStr, pageW - margin, 56, { align: "right" });
+
+  y = 100;
+
+  // Summary line
+  const allItems = SECTIONS.flatMap(s => s.items);
+  const done = allItems.filter(item => {
+    const s = state[item.id];
+    return item.type === "check" ? s?.checked : s?.answer?.trim().length > 0;
+  }).length;
+  doc.setFontSize(9);
+  doc.setTextColor(120, 120, 120);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${done} of ${allItems.length} items completed`, margin, y);
+  y += 24;
+
+  SECTIONS.forEach(section => {
+    checkPage(60);
+
+    // Section header
+    doc.setFillColor(240, 237, 230);
+    doc.rect(margin, y - 2, contentW, 22, "F");
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(26, 26, 26);
+    doc.text(`${section.emoji}  ${section.label.toUpperCase()}`, margin + 8, y + 13);
+    y += 30;
+
+    section.items.forEach(item => {
+      const st = state[item.id] || {};
+      const answer = st.answer?.trim() || "";
+      const checked = !!st.checked;
+
+      checkPage(40);
+
+      if (item.type === "check") {
+        // Checkbox
+        doc.setDrawColor(180, 180, 180);
+        doc.setLineWidth(0.8);
+        doc.rect(margin, y, 11, 11);
+        if (checked) {
+          doc.setDrawColor(26, 26, 26);
+          doc.setLineWidth(1.5);
+          doc.line(margin + 2, y + 5.5, margin + 4.5, y + 8.5);
+          doc.line(margin + 4.5, y + 8.5, margin + 9, y + 3);
+        }
+        doc.setFontSize(10);
+        doc.setFont("helvetica", checked ? "normal" : "normal");
+        doc.setTextColor(checked ? 140 : 26, checked ? 140 : 26, checked ? 140 : 26);
+        doc.text(item.label, margin + 18, y + 8.5);
+
+        if (answer) {
+          y += 16;
+          checkPage(20);
+          doc.setFontSize(9);
+          doc.setFont("helvetica", "italic");
+          doc.setTextColor(100, 100, 100);
+          y = wrapText(doc, answer, margin + 18, y, contentW - 18, 13);
+          y += 4;
+        } else {
+          y += 20;
+        }
+      } else {
+        // Ask item
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(26, 26, 26);
+        doc.text(item.label, margin, y + 8.5);
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(160, 160, 160);
+        doc.text(item.prompt, margin, y + 20);
+        y += 28;
+
+        checkPage(20);
+        doc.setFontSize(9.5);
+        doc.setFont("helvetica", "normal");
+        if (answer) {
+          doc.setTextColor(40, 40, 40);
+          y = wrapText(doc, answer, margin + 4, y, contentW - 4, 14);
+        } else {
+          doc.setTextColor(200, 200, 200);
+          doc.text("—", margin + 4, y);
+          y += 14;
+        }
+        y += 6;
+
+        // Thin divider
+        doc.setDrawColor(230, 228, 220);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, margin + contentW, y);
+        y += 10;
+      }
+    });
+
+    y += 16;
+  });
+
+  // Page numbers
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(8);
+    doc.setTextColor(180, 180, 180);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${i} / ${pageCount}`, pageW - margin, pageH - 24, { align: "right" });
+  }
+
+  const filename = (aptName || "apartment").replace(/\s+/g, "_") + "_checklist.pdf";
+  doc.save(filename);
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8L6.5 11.5L13 4.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+      <polyline points="16 6 12 2 8 6"/>
+      <line x1="12" y1="2" x2="12" y2="15"/>
+    </svg>
+  );
+}
+
+function App() {
+  const saved = load();
+  const [state, setState] = React.useState(saved.state || {});
+  const [aptName, setAptName] = React.useState(saved.aptName || "");
+  const [editingName, setEditingName] = React.useState(false);
+  const [exporting, setExporting] = React.useState(false);
+
+  function update(newState) {
+    setState(newState);
+    persist({ state: newState, aptName });
+  }
+
+  function toggle(id) {
+    update({ ...state, [id]: { ...state[id], checked: !state[id]?.checked } });
+  }
+
+  function setAnswer(id, val) {
+    update({ ...state, [id]: { ...state[id], answer: val } });
+  }
+
+  function saveName(val) {
+    setAptName(val);
+    persist({ state, aptName: val });
+  }
+
+  function handleExport() {
+    setExporting(true);
+    setTimeout(() => {
+      try { generatePDF(aptName, state); } catch(e) { alert("Could not generate PDF: " + e.message); }
+      setExporting(false);
+    }, 100);
+  }
+
+  const allItems = SECTIONS.flatMap(s => s.items);
+  const totalItems = allItems.length;
+  const doneItems = allItems.filter(item => {
+    const s = state[item.id];
+    return item.type === "check" ? s?.checked : s?.answer?.trim().length > 0;
+  }).length;
+  const pct = Math.round((doneItems / totalItems) * 100);
+
+  function scrollTo(id) {
+    const el = document.getElementById("sec-" + id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  return (
+    <div style={{ background: "#FAF7F2", minHeight: "100vh", paddingBottom: 60 }}>
+
+      {/* Sticky header */}
+      <div style={{ background: "#1A1A1A", padding: "20px 20px 16px", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+          <div style={{ flex: 1, minWidth: 0, marginRight: 12 }}>
+            {editingName ? (
+              <input
+                autoFocus
+                value={aptName}
+                onChange={e => saveName(e.target.value)}
+                onBlur={() => setEditingName(false)}
+                onKeyDown={e => e.key === "Enter" && setEditingName(false)}
+                placeholder="Name this apartment..."
+                style={{
+                  background: "transparent", border: "none",
+                  borderBottom: "1px solid #555", color: "#FAF7F2",
+                  fontSize: 18, fontFamily: "Georgia, serif",
+                  width: "100%", paddingBottom: 3,
+                }}
+              />
+            ) : (
+              <div onClick={() => setEditingName(true)} style={{ cursor: "pointer" }}>
+                <p style={{ color: "#555", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", margin: "0 0 3px", fontFamily: "monospace" }}>
+                  Apartment Checklist
+                </p>
+                <h1 style={{ color: "#FAF7F2", fontSize: 18, margin: 0, fontWeight: "normal", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {aptName || <span style={{ color: "#444" }}>Tap to name ✎</span>}
+                </h1>
+              </div>
+            )}
+          </div>
+
+          {/* Export / Share button */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            style={{
+              background: exporting ? "#333" : "#C8A96E",
+              color: exporting ? "#888" : "#1A1A1A",
+              border: "none", borderRadius: 10,
+              padding: "8px 14px",
+              fontSize: 12, fontFamily: "monospace",
+              fontWeight: "bold", letterSpacing: "0.04em",
+              cursor: exporting ? "default" : "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+              flexShrink: 0, transition: "all 0.2s",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <ShareIcon />
+            {exporting ? "Building..." : "Export PDF"}
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, height: 3, background: "#2A2A2A", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: pct + "%", background: "#C8A96E", borderRadius: 2, transition: "width 0.4s ease" }} />
+          </div>
+          <span style={{ color: "#C8A96E", fontSize: 11, fontFamily: "monospace" }}>{doneItems}/{totalItems}</span>
+        </div>
+      </div>
+
+      {/* Section pills */}
+      <div className="pill-scroll">
+        {SECTIONS.map(s => {
+          const done = s.items.filter(item => {
+            const st = state[item.id];
+            return item.type === "check" ? st?.checked : st?.answer?.trim().length > 0;
+          }).length;
+          const allDone = done === s.items.length;
+          return (
+            <button key={s.id} onClick={() => scrollTo(s.id)} style={{
+              background: allDone ? "#1A1A1A" : "#EDEAE3",
+              color: allDone ? "#C8A96E" : "#666",
+              border: "none", borderRadius: 20,
+              padding: "6px 13px", fontSize: 11,
+              fontFamily: "monospace", whiteSpace: "nowrap",
+              cursor: "pointer", letterSpacing: "0.04em",
+            }}>
+              {allDone ? "✓ " : ""}{s.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Sections */}
+      <div style={{ padding: "16px 16px 0" }}>
+        {SECTIONS.map(section => (
+          <div key={section.id} id={"sec-" + section.id} style={{ marginBottom: 28, scrollMarginTop: 110 }}>
+            <div style={{ marginBottom: 10, paddingLeft: 2 }}>
+              <h2 style={{ fontSize: 15, color: "#1A1A1A", fontWeight: "normal" }}>{section.emoji} {section.label}</h2>
+              <p style={{ fontSize: 10, color: "#AAA", fontFamily: "monospace", letterSpacing: "0.08em", textTransform: "uppercase", marginTop: 2 }}>
+                {section.subtitle}
+              </p>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {section.items.map(item => {
+                const st = state[item.id] || {};
+                const isDone = item.type === "check" ? st.checked : st.answer?.trim().length > 0;
+
+                return (
+                  <div key={item.id} style={{
+                    background: isDone ? "#F0EDE6" : "#FFFFFF",
+                    border: "1px solid " + (isDone ? "#DDD8CE" : "#E8E4DC"),
+                    borderRadius: 12, padding: "13px 13px 11px",
+                    transition: "background 0.2s, border-color 0.2s",
+                  }}>
+                    <div style={{ display: "flex", gap: 11, alignItems: "flex-start" }}>
+                      {item.type === "check" ? (
+                        <button onClick={() => toggle(item.id)} style={{
+                          width: 24, height: 24, borderRadius: 6,
+                          border: "2px solid " + (st.checked ? "#1A1A1A" : "#CCC"),
+                          background: st.checked ? "#1A1A1A" : "transparent",
+                          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0, color: "#FAF7F2", marginTop: 1, transition: "all 0.15s",
+                        }}>
+                          {st.checked && <CheckIcon />}
+                        </button>
+                      ) : (
+                        <div style={{
+                          width: 24, height: 24, borderRadius: 6,
+                          background: isDone ? "#C8A96E33" : "#F5F0E8",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          flexShrink: 0, fontSize: 13, color: "#C8A96E", marginTop: 1,
+                          fontFamily: "monospace", fontWeight: "bold",
+                        }}>?</div>
+                      )}
+
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{
+                          margin: "0 0 2px", fontSize: 14, color: "#1A1A1A", fontFamily: "Georgia, serif",
+                          textDecoration: item.type === "check" && st.checked ? "line-through" : "none",
+                          opacity: item.type === "check" && st.checked ? 0.45 : 1,
+                          transition: "opacity 0.2s",
+                        }}>
+                          {item.label}
+                        </p>
+                        <p style={{ margin: "0 0 9px", fontSize: 11, color: "#BBB", fontFamily: "monospace", lineHeight: 1.4 }}>
+                          {item.prompt}
+                        </p>
+                        <textarea
+                          value={st.answer || ""}
+                          onChange={e => setAnswer(item.id, e.target.value)}
+                          placeholder={item.type === "ask" ? "Write answer here..." : "Notes..."}
+                          rows={item.type === "ask" ? 2 : 1}
+                          style={{
+                            width: "100%", background: "#FAF7F2",
+                            border: "1px solid " + (item.type === "ask" ? "#DDD8CE" : "#EDEAE3"),
+                            borderRadius: 8, padding: "7px 10px",
+                            fontSize: item.type === "ask" ? 13 : 12,
+                            fontFamily: item.type === "ask" ? "Georgia, serif" : "monospace",
+                            color: "#333", resize: "vertical", lineHeight: 1.5,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ textAlign: "center", padding: "8px 20px 0" }}>
+        <p style={{ fontSize: 10, color: "#CCC", fontFamily: "monospace", letterSpacing: "0.08em" }}>
+          AUTOSAVED TO THIS DEVICE
+        </p>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
