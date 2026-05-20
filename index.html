@@ -178,7 +178,7 @@ function generatePDF(aptName, state) {
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(26, 26, 26);
-    doc.text(`${section.emoji}  ${section.label.toUpperCase()}`, margin + 8, y + 13);
+          doc.text(section.label.toUpperCase(), margin + 8, y + 13);
     y += 30;
 
     section.items.forEach(item => {
@@ -289,6 +289,7 @@ function App() {
   const [aptName, setAptName] = React.useState(saved.aptName || "");
   const [editingName, setEditingName] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
+  const [confirming, setConfirming] = React.useState(false);
 
   function update(newState) {
     setState(newState);
@@ -306,6 +307,19 @@ function App() {
   function saveName(val) {
     setAptName(val);
     persist({ state, aptName: val });
+  }
+
+  function handleClear() {
+    if (confirming) {
+      const empty = {};
+      setState(empty);
+      setAptName("");
+      persist({ state: empty, aptName: "" });
+      setConfirming(false);
+    } else {
+      setConfirming(true);
+      setTimeout(() => setConfirming(false), 3000);
+    }
   }
 
   function handleExport() {
@@ -363,7 +377,24 @@ function App() {
             )}
           </div>
 
-          {/* Export / Share button */}
+          {/* Clear + Export buttons */}
+          <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={handleClear}
+            style={{
+              background: confirming ? "#8B2020" : "#2A2A2A",
+              color: confirming ? "#FFD0D0" : "#888",
+              border: "none", borderRadius: 10,
+              padding: "8px 12px",
+              fontSize: 12, fontFamily: "monospace",
+              fontWeight: "bold", letterSpacing: "0.04em",
+              cursor: "pointer",
+              transition: "all 0.2s",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {confirming ? "Sure?" : "New"}
+          </button>
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -383,6 +414,7 @@ function App() {
             <ShareIcon />
             {exporting ? "Building..." : "Export PDF"}
           </button>
+          </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
